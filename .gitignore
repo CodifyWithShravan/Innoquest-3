@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+/lib/secrets.dart/
 
 # IntelliJ related
 *.iml
@@ -44,4 +45,3 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-/lib/secrets.dart/
