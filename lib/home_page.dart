@@ -27,6 +27,7 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic>? _latestNews;
   String _userName = 'Farmer';
   bool _isLoadingDashboard = true;
+  String _voiceLocaleId = 'ml_IN'; // Default to Malayalam
 
   @override
   void initState() {
@@ -60,16 +61,14 @@ class _HomePageState extends State<HomePage> {
       if (username != null && username.isNotEmpty) {
         if (mounted) setState(() => _userName = username);
       } else {
-        if (mounted) {
+        if (mounted)
           setState(
               () => _userName = _supabase.auth.currentUser?.email ?? 'Farmer');
-        }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         setState(
             () => _userName = _supabase.auth.currentUser?.email ?? 'Farmer');
-      }
     }
   }
 
@@ -107,7 +106,8 @@ class _HomePageState extends State<HomePage> {
 
   // --- Voice Assistant Core Functions ---
   void _initTts() async {
-    await _flutterTts.setLanguage("ml-IN");
+    await _flutterTts
+        .setLanguage(_voiceLocaleId == 'ml_IN' ? "ml-IN" : "en-IN");
     await _flutterTts.setSpeechRate(0.5);
   }
 
@@ -127,8 +127,8 @@ class _HomePageState extends State<HomePage> {
       _intent = '';
     });
     await _speechToText.listen(
+      localeId: _voiceLocaleId,
       onResult: (result) => setState(() => _lastWords = result.recognizedWords),
-      localeId: 'ml_IN',
     );
     setState(() => _isListening = true);
   }
@@ -162,34 +162,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _actOnIntent(String intent) async {
     String responseText = '';
-
-    // --- NEW: Helper function to translate weather terms ---
-    String translateWeatherToMalayalam(String englishDescription) {
-      switch (englishDescription.toLowerCase()) {
-        case 'clear sky':
-          return 'തെളിഞ്ഞ ആകാശം';
-        case 'few clouds':
-          return 'ചെറിയ മേഘങ്ങൾ';
-        case 'scattered clouds':
-          return 'ഇടക്കിടെ മേഘങ്ങൾ';
-        case 'broken clouds':
-          return 'തങ്ങിനിൽക്കുന്ന മേഘങ്ങൾ';
-        case 'overcast clouds':
-          return 'മേഘാവൃതമായ';
-        case 'shower rain':
-        case 'rain':
-        case 'light rain':
-          return 'മഴ';
-        case 'thunderstorm':
-          return 'ഇടിമിന്നൽ';
-        case 'snow':
-          return 'മഞ്ഞ്';
-        case 'mist':
-          return 'മൂടൽമഞ്ഞ്';
-        default:
-          return englishDescription; // Fallback to English if not found
-      }
-    }
+    bool isMalayalam = _voiceLocaleId == 'ml_IN';
 
     switch (intent) {
       case 'get_weather':
@@ -198,41 +171,50 @@ class _HomePageState extends State<HomePage> {
           const lat = 9.9312;
           const lon = 76.2673;
           final weatherUri = Uri.parse(
-              'https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$openWeatherApiKey&units=metric'); // Removed lang=ml
+              'https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$openWeatherApiKey&units=metric');
           final weatherResponse = await http.get(weatherUri);
 
           if (weatherResponse.statusCode == 200) {
             final weatherData = jsonDecode(weatherResponse.body);
             final mainWeather =
                 weatherData['weather'][0]['main'].toString().toLowerCase();
-            final englishDescription = weatherData['weather'][0]['description'];
+            final description = weatherData['weather'][0]['description'];
             final temperature = weatherData['main']['temp'];
 
-            // --- MODIFIED: Use the translator and build a pure Malayalam sentence ---
-            final malayalamDescription =
-                translateWeatherToMalayalam(englishDescription);
-            final temperatureInMalayalam =
-                temperature.round().toString(); // Use the number as a word
-
-            responseText =
-                'ഇപ്പോഴത്തെ കാലാവസ്ഥ $malayalamDescription ആണ്. താപനില $temperatureInMalayalam ഡിഗ്രി സെൽഷ്യസ് ആണ്.';
+            if (isMalayalam) {
+              final malayalamDescription =
+                  _translateWeatherToMalayalam(description);
+              responseText =
+                  'ഇപ്പോഴത്തെ കാലാവസ്ഥ $malayalamDescription ആണ്. താപനില ${temperature.round()} ഡിഗ്രി സെൽഷ്യസ് ആണ്.';
+            } else {
+              responseText =
+                  'The current weather is $description with a temperature of ${temperature.round()} degrees Celsius.';
+            }
 
             if (mainWeather.contains('rain') ||
                 mainWeather.contains('thunderstorm')) {
-              advice =
-                  ' കനത്ത മഴയ്ക്ക് സാധ്യതയുണ്ട്. വെള്ളപ്പൊക്കം ഒഴിവാക്കാൻ നിങ്ങളുടെ വയലിലെ дренаж സംവിധാനങ്ങൾ പരിശോധിക്കുക. വളപ്രയോഗം ഒഴിവാക്കുക.';
+              advice = isMalayalam
+                  ? ' കനത്ത മഴയ്ക്ക് സാധ്യതയുണ്ട്. വെള്ളപ്പൊക്കം ഒഴിവാക്കാൻ дренаж സംവിധാനങ്ങൾ പരിശോധിക്കുക.'
+                  : ' Heavy rain is expected. Please check your field drainage systems to avoid waterlogging.';
             } else if (mainWeather.contains('clear') && temperature > 32) {
-              advice =
-                  ' കടുത്ത ചൂടും വരണ്ട കാലാവസ്ഥയുമാണ്. വരൾച്ചയെ നേരിടാൻ ജലസേചനം നടത്തുക. ബാഷ്പീകരണം കുറയ്ക്കാൻ പുതയിടുന്നത് നല്ലതാണ്.';
+              advice = isMalayalam
+                  ? ' കടുത്ത ചൂടും വരണ്ട കാലാവസ്ഥയുമാണ്. വിളകൾക്ക് ജലസേചനം ഉറപ്പാക്കുക.'
+                  : ' It is a hot and dry day. Ensure proper irrigation for your crops.';
             } else {
-              advice = ' കൃഷിപ്പണിക്ക് അനുയോജ്യമായ കാലാവസ്ഥയാണ്.';
+              advice = isMalayalam
+                  ? ' കൃഷിപ്പണിക്ക് അനുയോജ്യമായ കാലാവസ്ഥയാണ്.'
+                  : ' The weather is suitable for farming activities.';
             }
             responseText += advice;
           } else {
-            responseText = 'ക്ഷമിക്കണം, എനിക്ക് കാലാവസ്ഥ ലഭിച്ചില്ല.';
+            responseText = isMalayalam
+                ? 'ക്ഷമിക്കണം, എനിക്ക് കാലാവസ്ഥ ലഭിച്ചില്ല.'
+                : 'Sorry, I could not fetch the weather.';
           }
         } catch (e) {
-          responseText = 'ക്ഷമിക്കണം, ഉപദേശം നൽകുന്നതിൽ ഒരു പിശകുണ്ടായി.';
+          responseText = isMalayalam
+              ? 'ക്ഷമിക്കണം, ഉപദേശം നൽകുന്നതിൽ ഒരു പിശകുണ്ടായി.'
+              : 'Sorry, an error occurred while providing advice.';
         }
         break;
 
@@ -242,20 +224,62 @@ class _HomePageState extends State<HomePage> {
           await _supabase
               .from('activities')
               .insert({'activity_description': _lastWords, 'user_id': userId});
-          responseText =
-              'നിങ്ങളുടെ പ്രവർത്തനം വിജയകരമായി രേഖപ്പെടുത്തിയിരിക്കുന്നു.';
+          responseText = isMalayalam
+              ? 'നിങ്ങളുടെ പ്രവർത്തനം വിജയകരമായി രേഖപ്പെടുത്തിയിരിക്കുന്നു.'
+              : 'Your activity has been logged successfully.';
         } catch (error) {
-          responseText =
-              'ക്ഷമിക്കണം, നിങ്ങളുടെ പ്രവർത്തനം രേഖപ്പെടുത്തുന്നതിൽ ഒരു പിശകുണ്ടായി.';
+          responseText = isMalayalam
+              ? 'ക്ഷമിക്കണം, നിങ്ങളുടെ പ്രവർത്തനം രേഖപ്പെടുത്തുന്നതിൽ ഒരു പിശകുണ്ടായി.'
+              : 'Sorry, there was an error logging your activity.';
         }
         break;
 
       default:
-        responseText =
-            'ക്ഷമിക്കണം, എനിക്ക് മനസ്സിലായില്ല. ദയവായി ഒന്നുകൂടി പറയുക.';
+        responseText = isMalayalam
+            ? 'ക്ഷമിക്കണം, എനിക്ക് മനസ്സിലായില്ല. ദയവായി ഒന്നുകൂടി പറയുക.'
+            : 'Sorry, I did not understand. Please say that again.';
         break;
     }
     _speak(responseText);
+  }
+
+  String _translateWeatherToMalayalam(String englishDescription) {
+    switch (englishDescription.toLowerCase()) {
+      case 'clear sky':
+        return 'തെളിഞ്ഞ ആകാശം';
+      case 'few clouds':
+        return 'ചെറിയ മേഘങ്ങൾ';
+      case 'scattered clouds':
+        return 'ഇടക്കിടെ മേഘങ്ങൾ';
+      case 'broken clouds':
+        return 'തങ്ങിനിൽക്കുന്ന മേഘങ്ങൾ';
+      case 'overcast clouds':
+        return 'മേഘാവൃതമായ';
+      case 'shower rain':
+      case 'rain':
+      case 'light rain':
+      case 'moderate rain':
+        return 'മഴ';
+      case 'thunderstorm':
+        return 'ഇടിമിന്നൽ';
+      case 'snow':
+        return 'മഞ്ഞ്';
+      case 'mist':
+        return 'മൂടൽമഞ്ഞ്';
+      default:
+        return englishDescription;
+    }
+  }
+
+  void _switchVoiceLanguage() {
+    setState(() {
+      if (_voiceLocaleId == 'ml_IN') {
+        _voiceLocaleId = 'en_IN';
+      } else {
+        _voiceLocaleId = 'ml_IN';
+      }
+      _initTts();
+    });
   }
 
   @override
@@ -263,6 +287,16 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Krishi Sakhi Dashboard'),
+        actions: [
+          IconButton(
+            onPressed: _switchVoiceLanguage,
+            icon: const Icon(Icons.translate),
+            tooltip: 'Switch Voice Language',
+          ),
+          Text(_voiceLocaleId == 'ml_IN' ? 'ML' : 'EN',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 16),
+        ],
       ),
       drawer: const AppDrawer(),
       body: _isLoadingDashboard
@@ -325,20 +359,32 @@ class _HomePageState extends State<HomePage> {
                   style: TextStyle(fontSize: 16, color: Colors.grey),
                   textAlign: TextAlign.center,
                 )),
-                const SizedBox(height: 12),
-                Center(
-                    child: Text(_lastWords,
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.w500),
-                        textAlign: TextAlign.center)),
-                const SizedBox(height: 12),
-                Center(
-                    child: Text(_intent,
-                        style: TextStyle(
-                            fontSize: 18,
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center)),
+
+                // --- THIS IS THE CORRECTED PART ---
+                // This syntax conditionally adds widgets to the list
+                if (_lastWords.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      _lastWords,
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Text(
+                      _intent,
+                      style: TextStyle(
+                          fontSize: 18,
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+                // --- END OF CORRECTION ---
               ],
             ),
       floatingActionButton: FloatingActionButton.large(
