@@ -61,14 +61,16 @@ class _HomePageState extends State<HomePage> {
       if (username != null && username.isNotEmpty) {
         if (mounted) setState(() => _userName = username);
       } else {
-        if (mounted)
+        if (mounted) {
           setState(
               () => _userName = _supabase.auth.currentUser?.email ?? 'Farmer');
+        }
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
             () => _userName = _supabase.auth.currentUser?.email ?? 'Farmer');
+      }
     }
   }
 
